@@ -79,4 +79,8 @@ contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
         ERC20(_token).safeTransfer(_to, _amount);
         return _amount;
     }
+
+    function getERC677TokenLength() external view returns (uint256) {
+        return erc677Tokens.length;
+    }
 }
