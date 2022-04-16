@@ -4,15 +4,20 @@ pragma solidity 0.6.12;
 import "./BoringOwnable.sol";
 import "./compound/CErc20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
 contract Ledger is BoringOwnable {
     using SafeMath for uint256;
+    using SafeERC20 for ERC20;
+    using Address for address;
 
     uint256 constant PRICE_FACTOR = 1e8;
 
     mapping(address => mapping(address => uint256)) debtMap;
     mapping(address => mapping(address => uint256)) repaidMap;
+    mapping(address => uint256) bondMap;
 
     mapping(address => uint256) totalDebtMap;
 
@@ -21,9 +26,18 @@ contract Ledger is BoringOwnable {
     address[] public debtTokens;
     address[] public repayFTokens;
 
+    address public bondExchange;
+
+    modifier onlyBondExchange() {
+        require(msg.sender == bondExchange, "Ledger: onlyBondExchange");
+        _;
+    }
+
     event TokenPriceChanged(address indexed _token, uint256 _price);
     event Repaid(address indexed _account, bool _succeeded, uint256 _repayInUSD);
     event UserDebtChanged(address indexed _account, address _token, uint256 _amount);
+    event BondExchangeChanged(address _bondExchange);
+    event DebtToBondSuccess(address _account, uint256 _amountInUSD);
 
     constructor (address[] memory _debtTokens, address[] memory _repayFTokens) public {
         debtTokens = _debtTokens;
@@ -55,6 +69,13 @@ contract Ledger is BoringOwnable {
         }
     }
 
+    function setBondExchange(address _bondExchange) external onlyOwner {
+        require(_bondExchange.isContract(), "Ledger: invalid parameter");
+
+        bondExchange = _bondExchange;
+        emit BondExchangeChanged(_bondExchange);
+    }
+
     function repayToUsers(address[] memory _accounts, uint256[] memory _repayInUSD) external onlyOwner {
         require(_accounts.length == _repayInUSD.length, "Ledger: invalid parameter");
 
@@ -64,10 +85,23 @@ contract Ledger is BoringOwnable {
         }
     }
 
+    function debtToBond(address _account, uint256 _amountInUSD) external onlyBondExchange returns (uint256) {
+        uint256 debtInUSD = getAccountDebtInUSD(_account);
+        uint256 repaidInUSD = getAccountRepaidInUSD(_account);
+
+        _amountInUSD = _amountInUSD <= debtInUSD.sub(repaidInUSD) ? _amountInUSD : debtInUSD.sub(repaidInUSD);
+        if (_amountInUSD == 0) return 0;
+
+        bondMap[_account] = bondMap[_account].add(_amountInUSD);
+        emit DebtToBondSuccess(_account, _amountInUSD);
+
+        return _amountInUSD;
+    }
+
     function withdrawFToken(address _ftoken, uint256 _amount) external onlyOwner returns (uint256) {
         uint256 balance = ERC20(_ftoken).balanceOf(address(this));
         _amount = _amount >= balance ? balance : _amount;
-        ERC20(_ftoken).transfer(owner, _amount);
+        ERC20(_ftoken).safeTransfer(owner, _amount);
         return _amount;
     }
 
@@ -117,6 +151,8 @@ contract Ledger is BoringOwnable {
 
             repaidInUSD = repaidInUSD.add(underlyingAmount.mul(prices[underlying]).div(10 ** decimals));
         }
+
+        repaidInUSD = repaidInUSD.add(bondMap[_account]);
     }
 
     function getTotalDebt(address _token) external view returns (uint256) {
@@ -171,7 +207,7 @@ contract Ledger is BoringOwnable {
             repaidMap[_account][repayFTokens[i]] = repaidMap[_account][repayFTokens[i]].add(vars.ftokenAmount);
 
             // transfer ftoken to user.
-            ERC20(repayFTokens[i]).transfer(_account, vars.ftokenAmount);
+            ERC20(repayFTokens[i]).safeTransfer(_account, vars.ftokenAmount);
 
             if (repayCurrentInUSD == 0) break;
         }
