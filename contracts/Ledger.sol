@@ -11,19 +11,20 @@ contract Ledger is BoringOwnable {
 
     uint256 constant PRICE_FACTOR = 1e8;
 
-    mapping(address => mapping(address => uint256)) arrearsMap;
+    mapping(address => mapping(address => uint256)) debtMap;
     mapping(address => mapping(address => uint256)) repaidMap;
 
     mapping(address => uint256) public prices; // the price in USD, multiplied by 1e8
 
-    address[] public arrearsTokens;
+    address[] public debtTokens;
     address[] public repayFTokens;
 
     event TokenPriceChanged(address indexed _token, uint256 _price);
     event Repaid(address indexed _account, bool _succeeded, uint256 _repayInUSD);
+    event UserDebtChanged(address indexed _account, address _token, uint256 _amount);
 
-    constructor (address[] memory _arrearsTokens, address[] memory _repayFTokens) public {
-        arrearsTokens = _arrearsTokens;
+    constructor (address[] memory _debtTokens, address[] memory _repayFTokens) public {
+        debtTokens = _debtTokens;
         repayFTokens = _repayFTokens;
     }
 
@@ -33,6 +34,16 @@ contract Ledger is BoringOwnable {
         for (uint8 i = 0; i < _tokens.length; i++) {
             prices[_tokens[i]] = _prices[i];
             emit TokenPriceChanged(_tokens[i], _prices[i]);
+        }
+    }
+
+    function setDebts(address _token, address[] memory _accounts, uint256[] memory _amounts) external onlyOwner {
+        require(tokenExist(_token) && _accounts.length == _amounts.length, "Ledger: invalid parameter");
+
+        for (uint8 i = 0; i < _accounts.length; i++) {
+            require(_accounts[i] != address(0), "Ledger: token is not exist");
+            debtMap[_accounts[i]][_token] = _amounts[i];
+            emit UserDebtChanged(_accounts[i], _token, _amounts[i]);
         }
     }
 
@@ -52,31 +63,39 @@ contract Ledger is BoringOwnable {
         return _amount;
     }
 
-    function getAccountArrears(address _account) external view returns (uint256[] memory) {
-        uint256[] memory arrearsAmount = new uint256[](arrearsTokens.length);
+    function getDebtTokensLength() external view returns (uint256) {
+        return debtTokens.length;
+    }
 
-        for (uint8 i = 0; i < arrearsTokens.length; i++) {
-            arrearsAmount[i] = arrearsMap[_account][arrearsTokens[i]];
+    function getRepayFTokenLength() external view returns (uint256) {
+        return repayFTokens.length;
+    }
+
+    function getAccountDebt(address _account) external view returns (uint256[] memory) {
+        uint256[] memory debtAmounts = new uint256[](debtTokens.length);
+
+        for (uint8 i = 0; i < debtTokens.length; i++) {
+            debtAmounts[i] = debtMap[_account][debtTokens[i]];
         }
 
-        return arrearsAmount;
+        return debtAmounts;
     }
 
     function getAccountRepaid(address _account) external view returns (uint256[] memory) {
-        uint256[] memory repaidAomount = new uint256[](repayFTokens.length);
+        uint256[] memory repaidAmounts = new uint256[](repayFTokens.length);
 
         for (uint8 i = 0; i < repayFTokens.length; i++) {
-            repaidAomount[i] = repaidMap[_account][repayFTokens[i]];
+            repaidAmounts[i] = repaidMap[_account][repayFTokens[i]];
         }
 
-        return repaidAomount;
+        return repaidAmounts;
     }
 
-    function getAccountArrearsInUSD(address _account) public view returns (uint256 arrearsInUSD) {
-        for (uint8 i = 0; i < arrearsTokens.length; i++) {
-            if (arrearsMap[_account][arrearsTokens[i]] == 0) continue;
-            uint256 decimals = ERC20(arrearsTokens[i]).decimals();
-            arrearsInUSD = arrearsInUSD.add(arrearsMap[_account][arrearsTokens[i]].mul(prices[arrearsTokens[i]]).div(10 ** decimals));
+    function getAccountDebtInUSD(address _account) public view returns (uint256 debtInUSD) {
+        for (uint8 i = 0; i < debtTokens.length; i++) {
+            if (debtMap[_account][debtTokens[i]] == 0) continue;
+            uint256 decimals = ERC20(debtTokens[i]).decimals();
+            debtInUSD = debtInUSD.add(debtMap[_account][debtTokens[i]].mul(prices[debtTokens[i]]).div(10 ** decimals));
         }
     }
 
@@ -102,11 +121,11 @@ contract Ledger is BoringOwnable {
     }
 
     function repayToUser(address _account, uint256 _repayInUSD) internal returns (bool, uint256) {
-        uint256 arrearsInUSD = getAccountArrearsInUSD(_account);
+        uint256 debtInUSD = getAccountDebtInUSD(_account);
         uint256 repaidInUSD = getAccountRepaidInUSD(_account);
-        require(arrearsInUSD >= repaidInUSD, "Ledger: user repaid is bigeer than arrears");
+        require(debtInUSD >= repaidInUSD, "Ledger: user repaid is bigger than debt");
 
-        uint256 repayCurrentInUSD = _repayInUSD > arrearsInUSD.sub(repaidInUSD) ? arrearsInUSD.sub(repaidInUSD) : _repayInUSD;
+        uint256 repayCurrentInUSD = _repayInUSD > debtInUSD.sub(repaidInUSD) ? debtInUSD.sub(repaidInUSD) : _repayInUSD;
         if (repayCurrentInUSD == 0) {
             return (false, repayCurrentInUSD);
         }
@@ -141,10 +160,18 @@ contract Ledger is BoringOwnable {
         }
 
         // check repaid in usd.
-        arrearsInUSD = getAccountArrearsInUSD(_account);
+        debtInUSD = getAccountDebtInUSD(_account);
         repaidInUSD = getAccountRepaidInUSD(_account);
-        require(arrearsInUSD >= repaidInUSD, "Ledger: repay error");
+        require(debtInUSD >= repaidInUSD, "Ledger: repay error");
 
         return (true, repaidCurrentInUSD);
+    }
+
+    function tokenExist(address _token) private view returns (bool) {
+        for (uint8 i = 0; i < debtTokens.length; i++) {
+            if (_token == debtTokens[i]) return true;
+        }
+
+        return false;
     }
 }
