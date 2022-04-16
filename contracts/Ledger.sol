@@ -14,6 +14,8 @@ contract Ledger is BoringOwnable {
     mapping(address => mapping(address => uint256)) debtMap;
     mapping(address => mapping(address => uint256)) repaidMap;
 
+    mapping(address => uint256) totalDebtMap;
+
     mapping(address => uint256) public prices; // the price in USD, multiplied by 1e8
 
     address[] public debtTokens;
@@ -42,6 +44,12 @@ contract Ledger is BoringOwnable {
 
         for (uint8 i = 0; i < _accounts.length; i++) {
             require(_accounts[i] != address(0), "Ledger: token is not exist");
+
+            if (debtMap[_accounts[i]][_token] != 0) {
+                totalDebtMap[_token] = totalDebtMap[_token].sub(debtMap[_accounts[i]][_token]);
+            }
+            totalDebtMap[_token] = totalDebtMap[_token].add(_amounts[i]);
+
             debtMap[_accounts[i]][_token] = _amounts[i];
             emit UserDebtChanged(_accounts[i], _token, _amounts[i]);
         }
@@ -109,6 +117,15 @@ contract Ledger is BoringOwnable {
 
             repaidInUSD = repaidInUSD.add(underlyingAmount.mul(prices[underlying]).div(10 ** decimals));
         }
+    }
+
+    function getTotalDebt(address _token) external view returns (uint256) {
+        return totalDebtMap[_token];
+    }
+
+    function getTotalDebtInUSD(address _token) external view returns (uint256) {
+        uint256 decimals = ERC20(_token).decimals();
+        return totalDebtMap[_token].mul(prices[_token]).div(10 ** decimals);
     }
 
     struct RepayLocalParam {
