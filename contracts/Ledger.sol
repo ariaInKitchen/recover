@@ -20,6 +20,10 @@ contract Ledger is BoringOwnable {
     mapping(address => uint256) bondMap;
 
     mapping(address => uint256) totalDebtMap;
+    mapping(address => uint256) public totalDebtAccount;
+
+    uint256 public totalBond;
+    uint256 public totalBondAccount;
 
     mapping(address => uint256) public prices; // the price in USD, multiplied by 1e8
 
@@ -61,6 +65,8 @@ contract Ledger is BoringOwnable {
 
             if (debtMap[_accounts[i]][_token] != 0) {
                 totalDebtMap[_token] = totalDebtMap[_token].sub(debtMap[_accounts[i]][_token]);
+            } else {
+                totalDebtAccount[_token] += 1;
             }
             totalDebtMap[_token] = totalDebtMap[_token].add(_amounts[i]);
 
@@ -92,6 +98,11 @@ contract Ledger is BoringOwnable {
         _amountInUSD = _amountInUSD <= debtInUSD.sub(repaidInUSD) ? _amountInUSD : debtInUSD.sub(repaidInUSD);
         if (_amountInUSD == 0) return 0;
 
+        if (bondMap[_account] == 0) {
+            totalBondAccount++;
+        }
+
+        totalBond = totalBond.add(_amountInUSD);
         bondMap[_account] = bondMap[_account].add(_amountInUSD);
         emit DebtToBondSuccess(_account, _amountInUSD);
 
