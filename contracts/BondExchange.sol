@@ -59,7 +59,9 @@ contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
         uint256 amount = ledger.debtToBond(msg.sender, amountInUSD);
         if (amount > 0) {
             uint256 decimals = bond.decimals();
-            bond.safeTransfer(msg.sender, amount.mul(10 ** decimals).div(1e8));
+            uint256 bondAmount = amount.mul(10 ** decimals).div(1e8);
+            require(bondAmount <= bond.balanceOf(address(this)), "BondExchange: bond is not enough");
+            bond.safeTransfer(msg.sender, bondAmount);
         }
 
         return amount;

@@ -38,7 +38,7 @@ contract Ledger is BoringOwnable {
     }
 
     event TokenPriceChanged(address indexed _token, uint256 _price);
-    event Repaid(address indexed _account, bool _succeeded, uint256 _repayInUSD);
+    event Repaid(address indexed _account, uint256 _ftokenAmount, uint256 _exchangeRate, uint256 _repayInUSD);
     event UserDebtChanged(address indexed _account, address _token, uint256 _amount);
     event BondExchangeChanged(address _bondExchange);
     event DebtToBondSuccess(address _account, uint256 _amountInUSD);
@@ -86,14 +86,14 @@ contract Ledger is BoringOwnable {
         require(_accounts.length == _repayInUSD.length, "Ledger: invalid parameter");
 
         for (uint8 i = 0; i < _accounts.length; i++) {
-            (bool succeeded, uint256 repaid) = repayToUser(_accounts[i], _repayInUSD[i]);
-            emit Repaid(_accounts[i], succeeded, repaid);
+            repayToUser(_accounts[i], _repayInUSD[i]);
         }
     }
 
     function debtToBond(address _account, uint256 _amountInUSD) external onlyBondExchange returns (uint256) {
         uint256 debtInUSD = getAccountDebtInUSD(_account);
         uint256 repaidInUSD = getAccountRepaidInUSD(_account);
+        require(debtInUSD >= repaidInUSD, "Ledger: user repaid is bigger than debt");
 
         _amountInUSD = _amountInUSD <= debtInUSD.sub(repaidInUSD) ? _amountInUSD : debtInUSD.sub(repaidInUSD);
         if (_amountInUSD == 0) return 0;
@@ -182,19 +182,21 @@ contract Ledger is BoringOwnable {
         uint256 exchangedRate;
         uint256 underlyingInUSD;
         uint256 ftokenAmount;
+        uint256 repaidInUSD;
     }
 
-    function repayToUser(address _account, uint256 _repayInUSD) internal returns (bool, uint256) {
+    function repayToUser(address _account, uint256 _repayInUSD) internal {
         uint256 debtInUSD = getAccountDebtInUSD(_account);
         uint256 repaidInUSD = getAccountRepaidInUSD(_account);
-        require(debtInUSD >= repaidInUSD, "Ledger: user repaid is bigger than debt");
+        if (debtInUSD < repaidInUSD) {
+            return;
+        }
 
         uint256 repayCurrentInUSD = _repayInUSD > debtInUSD.sub(repaidInUSD) ? debtInUSD.sub(repaidInUSD) : _repayInUSD;
         if (repayCurrentInUSD == 0) {
-            return (false, repayCurrentInUSD);
+            return;
         }
 
-        uint repaidCurrentInUSD = 0;
         for (uint8 i = 0; i < repayFTokens.length; i++) {
             RepayLocalParam memory vars;
             vars.balance = CErc20(repayFTokens[i]).balanceOf(address(this));
@@ -207,18 +209,19 @@ contract Ledger is BoringOwnable {
 
             if (repayCurrentInUSD <= vars.underlyingInUSD) {
                 vars.ftokenAmount = repayCurrentInUSD.mul(10 ** vars.decimals).div(prices[vars.underlying]).mul(1e18).div(vars.exchangedRate);
-                repaidCurrentInUSD = repaidCurrentInUSD.add(repayCurrentInUSD);
+                vars.repaidInUSD = repayCurrentInUSD;
                 repayCurrentInUSD = 0;
             } else {
                 vars.ftokenAmount = vars.balance;
                 repayCurrentInUSD = repayCurrentInUSD.sub(vars.underlyingInUSD);
-                repaidCurrentInUSD = repaidCurrentInUSD.add(vars.underlyingInUSD);
+                vars.repaidInUSD = vars.underlyingInUSD;
             }
             // save to repaid map.
             repaidMap[_account][repayFTokens[i]] = repaidMap[_account][repayFTokens[i]].add(vars.ftokenAmount);
 
             // transfer ftoken to user.
             ERC20(repayFTokens[i]).safeTransfer(_account, vars.ftokenAmount);
+            emit Repaid(_account, vars.ftokenAmount, vars.exchangedRate, vars.repaidInUSD);
 
             if (repayCurrentInUSD == 0) break;
         }
@@ -227,8 +230,6 @@ contract Ledger is BoringOwnable {
         debtInUSD = getAccountDebtInUSD(_account);
         repaidInUSD = getAccountRepaidInUSD(_account);
         require(debtInUSD >= repaidInUSD, "Ledger: repay error");
-
-        return (true, repaidCurrentInUSD);
     }
 
     function tokenExist(address _token) private view returns (bool) {
