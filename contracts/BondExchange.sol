@@ -24,6 +24,7 @@ contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
 
         bond = ERC20(_bond);
         ledger = Ledger(_ledger);
+        fundsAdmin = _fundsAdmin;
         erc677Tokens = _erc677Tokens;
     }
 
