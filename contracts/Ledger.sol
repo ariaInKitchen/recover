@@ -2,6 +2,7 @@
 pragma solidity 0.6.12;
 
 import "./BoringOwnable.sol";
+import "./BondExchange.sol";
 import "./compound/CErc20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
@@ -135,10 +136,15 @@ contract Ledger is BoringOwnable {
     }
 
     function getAccountRepaid(address _account) external view returns (uint256[] memory) {
-        uint256[] memory repaidAmounts = new uint256[](repayFTokens.length);
+        uint256[] memory repaidAmounts = new uint256[](repayFTokens.length + 1);
 
         for (uint8 i = 0; i < repayFTokens.length; i++) {
             repaidAmounts[i] = repaidMap[_account][repayFTokens[i]];
+        }
+
+        if (bondMap[_account] != 0) {
+            uint256 decimals = BondExchange(bondExchange).bond().decimals();
+            repaidAmounts[repaidAmounts.length - 1] = bondMap[_account].mul(10 ** decimals).div(1e8);
         }
 
         return repaidAmounts;
