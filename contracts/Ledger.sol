@@ -117,6 +117,14 @@ contract Ledger is BoringOwnable {
         return _amount;
     }
 
+    function getDebtTokens() external view returns (address[] memory) {
+        return debtTokens;
+    }
+
+    function getRepayFTokens() external view returns (address[] memory) {
+        return repayFTokens;
+    }
+
     function getDebtTokensLength() external view returns (uint256) {
         return debtTokens.length;
     }
