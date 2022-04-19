@@ -5,17 +5,10 @@ import "./ERC677Receiver.sol";
 import "./Ledger.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
+contract BondExchange is BondExchangeStorage, BoringOwnable, ERC677Receiver, ReentrancyGuard {
     using SafeMath for uint256;
     using Address for address;
     using SafeERC20 for ERC20;
-
-    ERC20 public bond;
-    Ledger public ledger;
-
-    address[] public erc677Tokens;
-
-    address public fundsAdmin;
 
     event FundsAdminChanged(address _fundsAdmin);
 
@@ -23,7 +16,7 @@ contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
         require(_bond.isContract() && _ledger.isContract() && _fundsAdmin != address(0), "BondExchange: invalid parameter");
 
         bond = ERC20(_bond);
-        ledger = Ledger(_ledger);
+        ledger = _ledger;
         fundsAdmin = _fundsAdmin;
         erc677Tokens = _erc677Tokens;
     }
@@ -57,7 +50,7 @@ contract BondExchange is BoringOwnable, ERC677Receiver, ReentrancyGuard {
     }
 
     function debtToBond(uint256 amountInUSD) external returns (uint256) {
-        uint256 amount = ledger.debtToBond(msg.sender, amountInUSD);
+        uint256 amount = Ledger(ledger).debtToBond(msg.sender, amountInUSD);
         if (amount > 0) {
             uint256 decimals = bond.decimals();
             uint256 bondAmount = amount.mul(10 ** decimals).div(1e8);

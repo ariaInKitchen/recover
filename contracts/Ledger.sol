@@ -2,7 +2,7 @@
 pragma solidity 0.6.12;
 
 import "./BoringOwnable.sol";
-import "./BondExchange.sol";
+import "./BondExchangeStorage.sol";
 import "./compound/CErc20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
@@ -151,7 +151,7 @@ contract Ledger is BoringOwnable {
         }
 
         if (bondMap[_account] != 0) {
-            uint256 decimals = BondExchange(bondExchange).bond().decimals();
+            uint256 decimals = BondExchangeStorage(bondExchange).bond().decimals();
             repaidAmounts[repaidAmounts.length - 1] = bondMap[_account].mul(10 ** decimals).div(1e8);
         }
 
