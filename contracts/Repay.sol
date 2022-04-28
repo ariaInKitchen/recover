@@ -129,6 +129,8 @@ contract Repay is BoringOwnable {
         if (debtAmount == 0) return;
 
         RepayLocalParam memory vars;
+        vars.balance = CErc20(_ftoken).balanceOf(address(this));
+        if (vars.balance == 0) return;
 
         vars.underlying = CErc20(_ftoken).underlying();
         vars.decimals = ERC20(vars.underlying).decimals();
@@ -150,6 +152,9 @@ contract Repay is BoringOwnable {
         }
 
         vars.ftokenAmount = _amount.mul(1e18).div(vars.exchangedRate);
+        if (vars.ftokenAmount > vars.balance) {
+            vars.ftokenAmount = vars.balance;
+        }
         // save to repaid map.
         repaidMap[_account][_ftoken] = repaidMap[_account][_ftoken].add(vars.ftokenAmount);
 
@@ -236,5 +241,13 @@ contract Repay is BoringOwnable {
             break;
         }
         return index;
+    }
+
+
+    function withdraw(address _token, address _to, uint256 _amount) external onlyOwner returns (uint256) {
+        uint256 balance = ERC20(_token).balanceOf(address(this));
+        _amount = _amount >= balance ? balance : _amount;
+        ERC20(_token).safeTransfer(_to, _amount);
+        return _amount;
     }
 }
