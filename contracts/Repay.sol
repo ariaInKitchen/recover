@@ -105,6 +105,15 @@ contract Repay is BoringOwnable {
         }
     }
 
+    function repayUSDTokenToUsers(address _ftoken, address[] memory _accounts, uint256[] memory _repayAmount) external onlyOwner {
+        require(_accounts.length == _repayAmount.length, "Repay: invalid parameter");
+        require(ftokenExist(_ftoken), "Repay: ftoken not exist in repayFTokens");
+
+        for (uint8 i = 0; i < _accounts.length; i++) {
+            repayToUserByAmount(_ftoken, _accounts[i], _repayAmount[i]);
+        }
+    }
+
     struct RepayLocalParam {
         uint256 balance;
         address underlying;
@@ -249,5 +258,13 @@ contract Repay is BoringOwnable {
         _amount = _amount >= balance ? balance : _amount;
         ERC20(_token).safeTransfer(_to, _amount);
         return _amount;
+    }
+
+    function ftokenExist(address _ftoken) private view returns (bool) {
+        for (uint8 i = 0; i < repayFTokens.length; i++) {
+            if (_ftoken == repayFTokens[i]) return true;
+        }
+
+        return false;
     }
 }
